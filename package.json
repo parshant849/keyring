@@ -1,12 +1,16 @@
 {
-  "name": "openscad-renderer",
+  "name": "openscad-keyring-api",
   "version": "1.0.0",
+  "description": "OpenSCAD parametric keyring preview API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "sanitize-filename": "^1.6.3"
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }
