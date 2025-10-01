@@ -153,7 +153,7 @@ nameplate();
 
     // Camera angles configuration - Default to TOP view with clean background
     let cameraParams = '--camera=0,0,150,0,0,0,0'; // Top-down view
-    let colorScheme = '--colorscheme=Tomorrow'; // Clean white/gray background
+    let colorScheme = '--colorscheme=Cornfield'; // Better contrast than Tomorrow
     
     switch(angle) {
       case 'top':
@@ -177,8 +177,8 @@ nameplate();
         cameraParams = '--camera=0,0,150,0,0,0,0';
     }
 
-    // Execute OpenSCAD to generate PNG with clean white/gray background
-    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} ${cameraParams} --imgsize=800,600 ${colorScheme}`;
+    // Execute OpenSCAD to generate PNG with better color rendering
+    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} ${cameraParams} --imgsize=800,600 ${colorScheme} --render`;
     
     console.log('Executing OpenSCAD with camera:', angle);
     
