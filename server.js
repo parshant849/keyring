@@ -1,121 +1,183 @@
-// server.js
 const express = require('express');
-const { spawnSync } = require('child_process');
-const crypto = require('crypto');
-const fs = require('fs');
+const { exec } = require('child_process');
+const fs = require('fs').promises;
 const path = require('path');
-const sanitize = require('sanitize-filename');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CACHE_DIR = path.join(__dirname, 'cache');
-if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR);
 
-// Helper: create cache key from params
-function cacheKey(params) {
-  const sortedKeys = Object.keys(params).sort();
-  const concatenated = sortedKeys.map(k => `${k}=${params[k]}`).join('&');
-  return crypto.createHash('sha256').update(concatenated).digest('hex');
-}
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// Allowed params list (adapt to your .scad variables)
-const ALLOWED_PARAMS = ['name', 'thickness', 'textsize', 'font', 'color', 'fontstyle'];
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ status: 'OpenSCAD API is running' });
+});
 
-// Map raw query to -D overrides for OpenSCAD
-function buildOverrides(query) {
-  const overrides = [];
-  for (const k of ALLOWED_PARAMS) {
-    if (query[k] !== undefined) {
-      // Basic sanitization:
-      let v = String(query[k]).trim();
+// Generate keyring preview
+app.post('/api/generate-preview', async (req, res) => {
+  const params = req.body;
+  console.log('Received request with params:', params);
 
-      // prevent injection - remove dangerous characters for filenames/commands
-      v = v.replace(/["`$\\]/g, '');
+  // Create unique filename for this request
+  const timestamp = Date.now();
+  const scadFile = `/tmp/keyring_${timestamp}.scad`;
+  const pngFile = `/tmp/keyring_${timestamp}.png`;
 
-      // If string param: wrap in quotes for OpenSCAD (-D name="John")
-      // We'll treat numeric-looking params as numbers.
-      if (!isNaN(v) && v !== '') {
-        overrides.push(`-D`, `${k}=${v}`);
-      } else {
-        // Escape internal quotes
-        v = v.replace(/"/g, '\\"');
-        overrides.push(`-D`, `${k}="${v}"`);
-      }
-    }
-  }
-  return overrides;
-}
-
-app.get('/render', async (req, res) => {
   try {
-    // Restrict allowed params and build a cleaned params object
-    const params = {};
-    for (const k of ALLOWED_PARAMS) {
-      if (req.query[k] !== undefined) {
-        params[k] = String(req.query[k]);
+    // Build OpenSCAD file content with exact parameters
+    const scadContent = `
+// PARAMETRIC NAME KEYRING - Generated from API
+/* [Text & Font] */
+font_number      = ${params.font_number || 2};
+font_size        = ${params.font_size || 18};
+text_line1       = "${params.text_line1 || 'Name'}";
+two_line_mode    = ${params.two_line_mode || false};
+text_line2       = "${params.text_line2 || 'Name2'}";
+line_spacing     = ${params.line_spacing || 30};
+text_spacing_mul = ${params.text_spacing_mul || 1.00};
+x_shift          = ${params.x_shift || 0};
+y_shift          = ${params.y_shift || 0};
+
+/* [Base & Top] */
+base_thickness   = ${params.base_thickness || 6};
+top_text_height  = ${params.top_text_height || 1.5};
+border_offset_r  = ${params.border_offset_r || 1.8};
+
+/* [Loop] */
+loop_enable      = ${params.loop_enable !== false};
+loop_outer_d     = ${params.loop_outer_d || 10};
+loop_hole_d      = ${params.loop_hole_d || 6};
+loop_embed_ratio = ${params.loop_embed_ratio || 0.50};
+loop_v_align     = "${params.loop_v_align || 'bottom'}";
+loop_x_nudge     = ${params.loop_x_nudge || -2};
+loop_y_nudge     = ${params.loop_y_nudge || 5};
+
+/* [Colors] */
+base_color_name  = "${params.base_color_name || 'black'}";
+top_color_name   = "${params.top_color_name || 'orange'}";
+
+// Helper functions
+function font_name(n) =
+    (n==1) ? "Anton:style=Regular" :
+    (n==2) ? "Chewy:style=Regular" :
+    (n==3) ? "Montserrat:style=Black" :
+    (n==4) ? "Poppins:style=Black" :
+             "Liberation Sans:style=Bold";
+
+function text_h() = two_line_mode ? (line_spacing + font_size) : font_size;
+
+function loop_y_cen() =
+    (loop_v_align=="top")    ? -(text_h() - loop_outer_d)/2 :
+    (loop_v_align=="bottom") ? +(text_h() - loop_outer_d)/2 :
+                               -text_h()/2;
+
+// Text geometry
+module textline2d(txt){
+    text(txt, font=font_name(font_number), size=font_size,
+         halign="left", valign="baseline", spacing=text_spacing_mul);
+}
+
+module flat_text_2d(){
+    textline2d(text_line1);
+    if (two_line_mode) translate([0,-line_spacing]) textline2d(text_line2);
+}
+
+module outline_text_2d(){
+    if (border_offset_r > 0) offset(r=border_offset_r) flat_text_2d();
+    else flat_text_2d();
+}
+
+// Base with loop
+module base2d_with_loop(){
+    left_edge = -border_offset_r;
+    x_center  = left_edge - (loop_outer_d/2) + loop_outer_d*loop_embed_ratio + loop_x_nudge;
+    y_center  = loop_y_cen() + loop_y_nudge;
+    if (loop_enable) {
+        difference(){
+            union(){
+                outline_text_2d();
+                translate([x_center, y_center]) circle(d=loop_outer_d, $fn=64);
+            }
+            translate([x_center, y_center]) circle(d=loop_hole_d, $fn=64);
+        }
+    } else {
+        outline_text_2d();
+    }
+}
+
+// Main model
+module nameplate(){
+    translate([-x_shift, -y_shift, 0]){
+        color(base_color_name)
+        linear_extrude(height=base_thickness)
+            base2d_with_loop();
+        
+        color(top_color_name)
+        translate([0,0,base_thickness])
+            linear_extrude(height=top_text_height)
+                flat_text_2d();
+    }
+}
+
+// Render
+nameplate();
+`;
+
+    // Write SCAD file
+    await fs.writeFile(scadFile, scadContent);
+    console.log('SCAD file created:', scadFile);
+
+    // Execute OpenSCAD to generate PNG
+    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} --viewall --autocenter --imgsize=800,600 --colorscheme=BeforeDawn`;
+    
+    console.log('Executing OpenSCAD...');
+    
+    exec(openscadCommand, async (error, stdout, stderr) => {
+      if (error) {
+        console.error('OpenSCAD error:', error);
+        console.error('stderr:', stderr);
+        
+        // Clean up
+        try {
+          await fs.unlink(scadFile);
+        } catch (e) {}
+        
+        return res.status(500).json({ 
+          error: 'Failed to generate preview',
+          details: stderr || error.message 
+        });
       }
-    }
 
-    // Create cache key
-    const key = cacheKey(params);
-    const svgPath = path.join(CACHE_DIR, `${key}.svg`);
+      console.log('OpenSCAD output:', stdout);
 
-    // If cached -> return quickly
-    if (fs.existsSync(svgPath)) {
-      const svgContent = fs.readFileSync(svgPath, 'utf8');
-      res.set('Content-Type', 'image/svg+xml');
-      return res.send(svgContent);
-    }
-
-    // Build openscad args
-    const scadFile = path.join(__dirname, 'projected.scad'); // ensure your file is here
-    if (!fs.existsSync(scadFile)) {
-      return res.status(500).send('model.scad not found on server.');
-    }
-
-    const overrides = buildOverrides(params);
-
-    // Output temporary file
-    const tmpOut = path.join(CACHE_DIR, `tmp-${key}.svg`);
-
-    // Command:
-    // openscad -o tmpOut -D param=... model.scad
-    const args = ['-o', tmpOut, ...overrides, scadFile];
-
-    // Run OpenSCAD (synchronous execution)
-    const result = spawnSync('openscad', args, { encoding: 'utf8', timeout: 30_000 });
-
-    if (result.error) {
-      console.error('OpenSCAD spawn error:', result.error);
-      return res.status(500).send('Error running OpenSCAD engine.');
-    }
-
-    if (result.status !== 0) {
-      console.error('OpenSCAD stderr:', result.stderr);
-      return res.status(500).send(`OpenSCAD failed: ${result.stderr || 'unknown error'}`);
-    }
-
-    // Read output, optionally sanitize or post-process
-    if (!fs.existsSync(tmpOut)) {
-      return res.status(500).send('OpenSCAD did not produce output.');
-    }
-    const svgContent = fs.readFileSync(tmpOut, 'utf8');
-
-    // Save into cache (atomic rename)
-    fs.renameSync(tmpOut, svgPath);
-
-    res.set('Content-Type', 'image/svg+xml');
-    return res.send(svgContent);
+      try {
+        // Read generated PNG
+        const imageBuffer = await fs.readFile(pngFile);
+        
+        // Clean up temp files
+        await fs.unlink(scadFile);
+        await fs.unlink(pngFile);
+        
+        // Send PNG image
+        res.contentType('image/png');
+        res.send(imageBuffer);
+        
+        console.log('Preview sent successfully');
+      } catch (readError) {
+        console.error('Error reading PNG:', readError);
+        res.status(500).json({ error: 'Failed to read generated image' });
+      }
+    });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).send('Server error');
+    console.error('Server error:', err);
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
-// Health check
-app.get('/health', (req, res) => res.send('ok'));
-
 app.listen(PORT, () => {
-  console.log(`OpenSCAD renderer listening on port ${PORT}`);
+  console.log(`OpenSCAD API server running on port ${PORT}`);
 });
