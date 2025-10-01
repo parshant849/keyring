@@ -59,6 +59,27 @@ loop_y_nudge     = ${params.loop_y_nudge || 5};
 base_color_name  = "${params.base_color_name || 'black'}";
 top_color_name   = "${params.top_color_name || 'orange'}";
 
+// Color definitions for OpenSCAD rendering
+function get_base_color() = 
+    (base_color_name == "black")  ? [0.1, 0.1, 0.1] :
+    (base_color_name == "white")  ? [0.95, 0.95, 0.95] :
+    (base_color_name == "red")    ? [0.8, 0.1, 0.1] :
+    (base_color_name == "blue")   ? [0.1, 0.3, 0.8] :
+    (base_color_name == "green")  ? [0.1, 0.6, 0.2] :
+    (base_color_name == "yellow") ? [0.9, 0.9, 0.1] :
+    (base_color_name == "orange") ? [0.9, 0.5, 0.1] :
+                                    [0.1, 0.1, 0.1]; // default black
+
+function get_top_color() = 
+    (top_color_name == "white")  ? [0.95, 0.95, 0.95] :
+    (top_color_name == "black")  ? [0.1, 0.1, 0.1] :
+    (top_color_name == "red")    ? [0.8, 0.1, 0.1] :
+    (top_color_name == "blue")   ? [0.1, 0.3, 0.8] :
+    (top_color_name == "green")  ? [0.1, 0.6, 0.2] :
+    (top_color_name == "yellow") ? [0.9, 0.9, 0.1] :
+    (top_color_name == "orange") ? [0.9, 0.5, 0.1] :
+                                   [0.95, 0.95, 0.95]; // default white
+
 // Helper functions
 function font_name(n) =
     (n==1) ? "Anton:style=Regular" :
@@ -111,11 +132,11 @@ module base2d_with_loop(){
 // Main model
 module nameplate(){
     translate([-x_shift, -y_shift, 0]){
-        color(base_color_name)
+        color(get_base_color())
         linear_extrude(height=base_thickness)
             base2d_with_loop();
         
-        color(top_color_name)
+        color(get_top_color())
         translate([0,0,base_thickness])
             linear_extrude(height=top_text_height)
                 flat_text_2d();
