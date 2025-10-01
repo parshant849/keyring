@@ -16,12 +16,12 @@ app.get('/', (req, res) => {
   res.json({ status: 'OpenSCAD API is running' });
 });
 
-// Generate keyring preview
+// Generate keyring preview with multiple angles
 app.post('/api/generate-preview', async (req, res) => {
   const params = req.body;
-  console.log('Received request with params:', params);
+  const angle = req.body.camera_angle || 'default'; // default, top, side, front
+  console.log('Received request with params:', params, 'angle:', angle);
 
-  // Create unique filename for this request
   const timestamp = Date.now();
   const scadFile = `/tmp/keyring_${timestamp}.scad`;
   const pngFile = `/tmp/keyring_${timestamp}.png`;
@@ -130,17 +130,41 @@ nameplate();
     await fs.writeFile(scadFile, scadContent);
     console.log('SCAD file created:', scadFile);
 
-    // Execute OpenSCAD to generate PNG
-    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} --viewall --autocenter --imgsize=800,600 --colorscheme=BeforeDawn`;
+    // Camera angles configuration
+    let cameraParams = '--viewall --autocenter';
     
-    console.log('Executing OpenSCAD...');
+    switch(angle) {
+      case 'top':
+        // Top-down view to see text clearly
+        cameraParams = '--camera=0,0,100,0,0,0,0';
+        break;
+      case 'side':
+        // Side view to see thickness and layers
+        cameraParams = '--camera=100,0,20,0,0,0,0';
+        break;
+      case 'front':
+        // Front view
+        cameraParams = '--camera=0,100,20,0,0,0,0';
+        break;
+      case 'angle':
+        // Angled 3/4 view
+        cameraParams = '--camera=70,50,50,0,0,0,0';
+        break;
+      default:
+        // Default isometric-style view
+        cameraParams = '--viewall --autocenter';
+    }
+
+    // Execute OpenSCAD to generate PNG
+    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} ${cameraParams} --imgsize=800,600 --colorscheme=BeforeDawn`;
+    
+    console.log('Executing OpenSCAD with camera:', angle);
     
     exec(openscadCommand, async (error, stdout, stderr) => {
       if (error) {
         console.error('OpenSCAD error:', error);
         console.error('stderr:', stderr);
         
-        // Clean up
         try {
           await fs.unlink(scadFile);
         } catch (e) {}
@@ -154,14 +178,11 @@ nameplate();
       console.log('OpenSCAD output:', stdout);
 
       try {
-        // Read generated PNG
         const imageBuffer = await fs.readFile(pngFile);
         
-        // Clean up temp files
         await fs.unlink(scadFile);
         await fs.unlink(pngFile);
         
-        // Send PNG image
         res.contentType('image/png');
         res.send(imageBuffer);
         
