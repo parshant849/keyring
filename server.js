@@ -130,13 +130,14 @@ nameplate();
     await fs.writeFile(scadFile, scadContent);
     console.log('SCAD file created:', scadFile);
 
-    // Camera angles configuration
-    let cameraParams = '--viewall --autocenter';
+    // Camera angles configuration - Default to TOP view with clean background
+    let cameraParams = '--camera=0,0,150,0,0,0,0'; // Top-down view
+    let colorScheme = '--colorscheme=Tomorrow'; // Clean white/gray background
     
     switch(angle) {
       case 'top':
         // Top-down view to see text clearly
-        cameraParams = '--camera=0,0,100,0,0,0,0';
+        cameraParams = '--camera=0,0,150,0,0,0,0';
         break;
       case 'side':
         // Side view to see thickness and layers
@@ -151,12 +152,12 @@ nameplate();
         cameraParams = '--camera=70,50,50,0,0,0,0';
         break;
       default:
-        // Default isometric-style view
-        cameraParams = '--viewall --autocenter';
+        // Default TOP view (same as top)
+        cameraParams = '--camera=0,0,150,0,0,0,0';
     }
 
-    // Execute OpenSCAD to generate PNG
-    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} ${cameraParams} --imgsize=800,600 --colorscheme=BeforeDawn`;
+    // Execute OpenSCAD to generate PNG with clean white/gray background
+    const openscadCommand = `openscad --export-format=png ${scadFile} -o ${pngFile} ${cameraParams} --imgsize=800,600 ${colorScheme}`;
     
     console.log('Executing OpenSCAD with camera:', angle);
     
