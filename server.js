@@ -68,7 +68,7 @@ app.get('/render', async (req, res) => {
     }
 
     // Build openscad args
-    const scadFile = path.join(__dirname, 'model.scad'); // ensure your file is here
+    const scadFile = path.join(__dirname, 'projected.scad'); // ensure your file is here
     if (!fs.existsSync(scadFile)) {
       return res.status(500).send('model.scad not found on server.');
     }
